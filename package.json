@@ -1,0 +1,48 @@
+{
+  "name": "n8n-nodes-gbp-peak",
+  "version": "0.1.0",
+  "description": "n8n community nodes for GBP Peak — Google Maps geo-grid rank scanning, local pack tracking and AI visibility data",
+  "keywords": [
+    "n8n-community-node-package",
+    "n8n",
+    "gbp-peak",
+    "local-seo",
+    "seo",
+    "geo-grid",
+    "google-maps",
+    "rank-tracking"
+  ],
+  "license": "MIT",
+  "homepage": "https://gbppeak.com/api-docs",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Peakdrum/n8n-nodes-gbp-peak.git"
+  },
+  "author": {
+    "name": "GBP Peak",
+    "url": "https://gbppeak.com"
+  },
+  "main": "dist/index.js",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc && gulp build:icons",
+    "dev": "tsc --watch"
+  },
+  "n8n": {
+    "n8nNodesApiVersion": 1,
+    "credentials": ["dist/credentials/GbpPeakApi.credentials.js"],
+    "nodes": ["dist/nodes/GbpPeak/GbpPeak.node.js"]
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "gulp": "^5.0.0",
+    "n8n-workflow": "^1.60.0",
+    "typescript": "^5.5.0"
+  },
+  "peerDependencies": {
+    "n8n-workflow": "*"
+  },
+  "engines": {
+    "node": ">=18.10"
+  }
+}
