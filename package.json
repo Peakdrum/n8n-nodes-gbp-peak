@@ -25,7 +25,9 @@
   "main": "dist/index.js",
   "files": ["dist"],
   "scripts": {
-    "build": "tsc && gulp build:icons",
+    "build": "tsc && node scripts/copy-assets.cjs",
+    "test": "npm run build && node --test",
+    "prepack": "npm run build",
     "dev": "tsc --watch"
   },
   "n8n": {
@@ -35,7 +37,6 @@
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "gulp": "^5.0.0",
     "n8n-workflow": "^1.60.0",
     "typescript": "^5.5.0"
   },

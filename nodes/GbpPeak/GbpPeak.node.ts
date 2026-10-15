@@ -225,11 +225,10 @@ export class GbpPeak implements INodeType {
 	methods = {
 		loadOptions: {
 			async getLocationIds(this: ILoadOptionsFunctions) {
-				const data = await this.helpers.request({
+				const data = await this.helpers.httpRequestWithAuthentication.call(this, "gbpPeakApi", {
 					method: "GET",
 					url: `${BASE_URL}/locations`,
 					json: true,
-					auth: { sendImmediately: true },
 				});
 				const items = Array.isArray(data) ? data : data?.locations ?? data?.data ?? [];
 				return items.map((l: { id: number; label?: string; location_name?: string; name?: string }) => ({
@@ -249,18 +248,31 @@ export class GbpPeak implements INodeType {
 		const request = async (options: {
 			method: "GET" | "POST" | "DELETE";
 			url: string;
-			body?: unknown;
+			body?: IDataObject;
 			qs?: IDataObject;
-		}) => {
-			const credentials = await this.getCredentials("gbpPeakApi");
-			return this.helpers.request({
+		}) => this.helpers.httpRequestWithAuthentication.call(this, "gbpPeakApi", {
 				...options,
 				json: true,
 				headers: {
-					Authorization: `Bearer ${credentials.apiToken as string}`,
 					"Content-Type": "application/json",
 				},
 			});
+
+		const confirmRequiredBody = (error: unknown): IDataObject | undefined => {
+			if (!error || typeof error !== "object") return undefined;
+			const outer = error as IDataObject;
+			const response = outer.response && typeof outer.response === "object"
+				? outer.response as IDataObject : undefined;
+			for (const candidate of [response?.body, response?.data, outer.body, outer]) {
+				let body: unknown = candidate;
+				if (typeof body === "string") {
+					try { body = JSON.parse(body); } catch { continue; }
+				}
+				if (body && typeof body === "object" && (body as IDataObject).code === "confirm_required") {
+					return body as IDataObject;
+				}
+			}
+			return undefined;
 		};
 
 		for (let i = 0; i < items.length; i++) {
@@ -268,6 +280,9 @@ export class GbpPeak implements INodeType {
 				let response: unknown;
 
 				if (resource === "location") {
+					if (operation !== "list") {
+						throw new NodeOperationError(this.getNode(), `Unsupported operation "${operation}" for resource "${resource}"`, { itemIndex: i });
+					}
 					response = await request({ method: "GET", url: `${BASE_URL}/locations` });
 				} else if (resource === "scan") {
 					if (operation === "create") {
@@ -300,40 +315,54 @@ export class GbpPeak implements INodeType {
 						const keywordFilter = this.getNodeParameter("keywordFilter", i) as string;
 						if (keywordFilter) qs.keyword = keywordFilter;
 						response = await request({ method: "GET", url: `${BASE_URL}/scans`, qs });
-					} else {
+					} else if (operation === "cancel") {
 						response = await request({ method: "DELETE", url: `${BASE_URL}/scans` });
+					} else {
+						throw new NodeOperationError(this.getNode(), `Unsupported operation "${operation}" for resource "${resource}"`, { itemIndex: i });
 					}
 				} else if (resource === "keywordRanks") {
+					if (operation !== "trends") {
+						throw new NodeOperationError(this.getNode(), `Unsupported operation "${operation}" for resource "${resource}"`, { itemIndex: i });
+					}
 					response = await request({ method: "GET", url: `${BASE_URL}/keyword-ranks` });
 				} else if (resource === "geoRun") {
 					if (operation === "get") {
 						const runId = this.getNodeParameter("geoRunId", i) as number;
 						response = await request({ method: "GET", url: `${BASE_URL}/geo-runs/${runId}` });
-					} else {
+					} else if (operation === "list") {
 						response = await request({
 							method: "GET",
 							url: `${BASE_URL}/geo-runs`,
 							qs: { limit: this.getNodeParameter("geoRunLimit", i) as number },
 						});
+					} else {
+						throw new NodeOperationError(this.getNode(), `Unsupported operation "${operation}" for resource "${resource}"`, { itemIndex: i });
 					}
+				} else {
+					throw new NodeOperationError(this.getNode(), `Unsupported resource "${resource}"`, { itemIndex: i });
 				}
 
 				const wrapped = Array.isArray(response)
-					? response.map((j) => ({ json: j }))
-					: [{ json: response ?? {} }];
+					? response.map((j) => ({ json: j, pairedItem: { item: i } }))
+					: [{ json: response ?? {}, pairedItem: { item: i } }];
 				returnData.push(...wrapped);
 			} catch (error) {
 				if (this.continueOnFail()) {
 					returnData.push({ json: { error: (error as Error).message }, pairedItem: { item: i } });
 					continue;
 				}
-				if ((error as { code?: string }).code === "confirm_required") {
+				const body = confirmRequiredBody(error);
+				if (body?.code === "confirm_required") {
+					const apiMessage = typeof body.error === "string"
+						? body.error
+						: (error as Error).message;
 					throw new NodeOperationError(
 						this.getNode(),
-						(error as Error).message + " — enable the Confirm toggle and run again.",
+						apiMessage + " — review the cost and available credits before enabling Confirm to run once.",
 						{ itemIndex: i }
 					);
 				}
+				if (error instanceof NodeOperationError) throw error;
 				throw new NodeApiError(this.getNode(), error as never, { itemIndex: i });
 			}
 		}
